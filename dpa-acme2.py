@@ -172,19 +172,22 @@ class ACME2:
   def finalizeOrder(self, order, scsr):
     csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
     der = crypto.dump_certificate_request(crypto.FILETYPE_ASN1,csr)
-    self.requestJWS(order['finalize'], {'csr': base64url(der)})
+    return json.loads(self.requestJWS(order['finalize'], {'csr': base64url(der)})[0])
 
   def getCertificat(self, scsr, challengeSolvers):
     csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
     domains = [x[1].decode('utf-8') for x in csr.get_subject().get_components() if x[0] == b'CN']
+    for extension in csr.get_extensions():
+      if extension.get_short_name() == b'subjectAltName':
+        domains += [san[4:] for san in extension._subjectAltNameString().split(', ') if san[:4] == 'DNS:']
     order = self.makeOrder(domains)
     if order['status'] == 'pending':
       authorizations = [ self.getAuthorization(url) for url in order['authorizations'] ]
       self.resolveChallenges(authorizations, challengeSolvers)
-      self.finalizeOrder(order, scsr)
-    elif order['status'] != 'valid':
+      order = self.finalizeOrder(order, scsr)
+    if order['status'] != 'valid':
       raise ValueError("Unexpected order status: "+order['status'])
-    return self.request(order['certificate']) # WTF! No authentication to get the certificate!?!
+    return self.request(order['certificate'])[0].encode('utf-8')
 
 
 def main(argv):
