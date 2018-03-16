@@ -2,7 +2,7 @@
 
 import re, sys, json, base64, copy, os, errno, subprocess, hashlib, time, argparse, textwrap
 from OpenSSL import crypto
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 defaults = {
@@ -73,10 +73,10 @@ class ACME2:
     self.contact = []
     self.directory = json.loads(self.request(CA)[0])
 
-  def request(self, url, payload=None):
+  def request(self, url, payload=None, headers={}):
     if isinstance(payload, str):
       payload = payload.encode('utf-8')
-    response = urlopen(url, payload)
+    response = urlopen(Request(url, payload, headers))
     if 'Replay-Nonce' in response.headers:
       self.nonce = response.headers['Replay-Nonce']
     return response.read().decode("utf-8"), response.status, response.headers
@@ -102,7 +102,7 @@ class ACME2:
       "payload": base64url(payload)
     }
     request['signature'] = base64url(crypto.sign(self.account_key, request['protected'] + '.' + request['payload'], 'sha256'))
-    return self.request(url, json.dumps(request))
+    return self.request(url, json.dumps(request), {"Content-Type":"application/jose+json"})
 
   def createAccount(self):
     if not self.account_url:
