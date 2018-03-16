@@ -37,7 +37,7 @@ dpa-acme2.py [-h] --account-key ACCOUNT_KEY --csr CSR --output OUTPUT [--ca CA]
 | Argument | Description |
 |----------|-------------|
 | -h, --help | Show the help message |
-| --ca | URL to the ACME directory of the certificate authority, default is Let's Encrypts staging server: https://acme-staging-v02.api.letsencrypt.org/directory |
+| --ca | URL to the ACME directory of the certificate authority, default is Let's Encrypts staging endpoint: https://acme-staging-v02.api.letsencrypt.org/directory If you want to use Let's Encrypts production endpoint, it's at: https://acme-v02.api.letsencrypt.org/directory |
 | --contact | A contact URI. Usually an E-Mail as mailto URI, like 'mailto:me@example.com' |
 
 ## Challenge solver
