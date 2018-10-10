@@ -84,7 +84,7 @@ class ACME2:
   def newNonce(self):
     self.nonce = urlopen(self.directory['newNonce']).headers['Replay-Nonce']
 
-  def requestJWS(self, url, payload):
+  def requestJWS(self, url, payload=""):
     if not self.nonce:
       self.newNonce()
     protected = {
@@ -121,7 +121,8 @@ class ACME2:
     payload = {
       'identifiers': [ {'type':'dns', 'value': domain} for domain in domains ]
     }
-    return json.loads(self.requestJWS(self.directory['newOrder'],payload)[0])
+    body, status, headers = self.requestJWS(self.directory['newOrder'],payload)
+    return json.loads(body), headers['Location']
 
   def getAuthorization(self,url):
     auth = json.loads(self.request(url)[0])
@@ -169,10 +170,24 @@ class ACME2:
     if challenge_result['status'] != 'valid':
       raise Exception('Unexpected challenge status: '+challenge_result['status'])
 
-  def finalizeOrder(self, order, scsr):
+  def getOrder(self, url):
+    return self.requestJWS(self.directory['newOrder'])[0]
+
+  def finalizeOrder(self, location, scsr, order=None):
     csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
     der = crypto.dump_certificate_request(crypto.FILETYPE_ASN1,csr)
-    return json.loads(self.requestJWS(order['finalize'], {'csr': base64url(der)})[0])
+    attemps = 10
+    while ( (not order) or (order['status'] in ['pending','processing']) ) and 0<--attemps:
+      time.sleep(1)
+      order = self.getOrder(location)
+    if order['status'] != 'ready':
+      raise ValueError("Unexpected order status: "+order['status'])
+    order = json.loads(self.requestJWS(order['finalize'], {'csr': base64url(der)})[0])
+    attemps = 10
+    while order['status'] == 'ready' and 0<--attemps:
+      time.sleep(1)
+      order = self.getOrder(location)
+    return order
 
   def getCertificat(self, scsr, challengeSolvers):
     csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
@@ -180,11 +195,11 @@ class ACME2:
     for extension in csr.get_extensions():
       if extension.get_short_name() == b'subjectAltName':
         domains += [san[4:] for san in extension._subjectAltNameString().split(', ') if san[:4] == 'DNS:']
-    order = self.makeOrder(domains)
-    if order['status'] == 'pending':
+    order, location = self.makeOrder(domains)
+    if order['status'] == 'pending' or order['status'] == 'ready':
       authorizations = [ self.getAuthorization(url) for url in order['authorizations'] ]
       self.resolveChallenges(authorizations, challengeSolvers)
-      order = self.finalizeOrder(order, scsr)
+      order = self.finalizeOrder(location, scsr, order)
     if order['status'] != 'valid':
       raise ValueError("Unexpected order status: "+order['status'])
     return self.request(order['certificate'])[0].encode('utf-8')

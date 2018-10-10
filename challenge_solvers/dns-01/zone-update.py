@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, json, base64, hashlib, argparse, textwrap
+import sys, json, base64, hashlib, argparse, textwrap, time
 import dns.update, dns.tsigkeyring, dns.query
 
 def base64url(o):
@@ -58,6 +58,9 @@ def main(argv):
   response = dns.query.tcp(update, server, timeout=10)
   if response.rcode() != 0:
     raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
+
+  # Wait to make sure records have time to propagate
+  time.sleep(10)
 
   # Finish challange and wait for confirmation
   answare = json.dumps({"keyAuthorization": keyauthorization})
