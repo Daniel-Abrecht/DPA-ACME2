@@ -76,6 +76,7 @@ class ACME2:
   def request(self, url, payload=None, headers={}):
     if isinstance(payload, str):
       payload = payload.encode('utf-8')
+#    print((url, payload, headers))
     response = urlopen(Request(url, payload, headers))
     if 'Replay-Nonce' in response.headers:
       self.nonce = response.headers['Replay-Nonce']
@@ -84,7 +85,7 @@ class ACME2:
   def newNonce(self):
     self.nonce = urlopen(self.directory['newNonce']).headers['Replay-Nonce']
 
-  def requestJWS(self, url, payload=""):
+  def requestJWS(self, url, payload=None):
     if not self.nonce:
       self.newNonce()
     protected = {
@@ -99,7 +100,7 @@ class ACME2:
     protected["nonce"] = self.nonce
     request = {
       "protected": base64url(protected),
-      "payload": base64url(payload)
+      "payload": base64url(payload) if payload != None else ""
     }
     request['signature'] = base64url(crypto.sign(self.account_key, request['protected'] + '.' + request['payload'], 'sha256'))
     return self.request(url, json.dumps(request), {"Content-Type":"application/jose+json"})
@@ -171,7 +172,7 @@ class ACME2:
       raise Exception('Unexpected challenge status: '+challenge_result['status'])
 
   def getOrder(self, url):
-    return self.requestJWS(self.directory['newOrder'])[0]
+    return self.requestJWS(url)[0]
 
   def finalizeOrder(self, location, scsr, order=None):
     csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
