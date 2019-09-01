@@ -172,7 +172,7 @@ class ACME2:
       raise Exception('Unexpected challenge status: '+challenge_result['status'])
 
   def getOrder(self, url):
-    return self.requestJWS(url)[0]
+    return json.loads(self.requestJWS(url)[0])
 
   def finalizeOrder(self, location, scsr, order=None):
     csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
