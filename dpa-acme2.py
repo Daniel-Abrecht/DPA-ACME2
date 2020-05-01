@@ -102,7 +102,7 @@ class ACME2:
       "protected": base64url(protected),
       "payload": base64url(payload) if payload != None else ""
     }
-    request['signature'] = base64url(crypto.sign(self.account_key, request['protected'] + '.' + request['payload'], 'sha256'))
+    request['signature'] = base64url(crypto.sign(self.account_key, (request['protected'] + '.' + request['payload']).encode('utf-8'), 'sha256'))
     return self.request(url, json.dumps(request), {"Content-Type":"application/jose+json"})
 
   def createAccount(self):
