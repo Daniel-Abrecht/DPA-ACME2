@@ -55,9 +55,12 @@ def main(argv):
   # Perform DNS zone update
   update = dns.update.Update(zone, keyring=zone_keyring, keyalgorithm=update_algo)
   update.replace(rr_name+'.', 0, 'TXT', record)
-  response = dns.query.tcp(update, server, timeout=10)
-  if response.rcode() != 0:
-    raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
+  try:
+    response = dns.query.tcp(update, server, timeout=10)
+    if response.rcode() != 0:
+      raise Exception(f"DNS zone update failed, response was: {response}")
+  except:
+    raise Exception(f"DNS zone update failed. server: {server} zone: {zone} record: {rr_name}. IN TXT {record}")
 
   # Wait to make sure records have time to propagate
   time.sleep(10)
@@ -69,9 +72,13 @@ def main(argv):
   while sys.stdin.read(4 * 1024): pass # wait for EOF
 
   # Cleanup leftover DNS entries
-  update = dns.update.Update(zone, keyring=zone_keyring, keyalgorithm=update_algo)
-  update.delete(rr_name+'.', 'TXT')
-  dns.query.tcp(update, server, timeout=10)
+  # It's not fatal if this fails
+  try:
+    update = dns.update.Update(zone, keyring=zone_keyring, keyalgorithm=update_algo)
+    update.delete(rr_name+'.', 'TXT')
+    dns.query.tcp(update, server, timeout=10)
+  except:
+    traceback.print_exc()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
