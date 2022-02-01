@@ -5,12 +5,12 @@ which identifiers (usually domains).
 
 ## Usage Example
 ```
-./dpa-acme2.py --account-key account.key --csr domain.csr --output certificat.pem -- dns-01 zone-update.py --server localhost
+./dpa-acme2.py --account-key account.key --csr domain.csr --output certificat.pem -- dns-01 zone-update.py --server 127.0.0.1
 ```
 This will request a certificate for the domains specified in domain.csr, by solving the
 dns-01 challenge using the program at ./challenge_solvers/dns-01/zone-update.py.
 The argument --server is specific to the zone-update.py challenge solver, and
-specifies that the DNS server to update is running on localhost. All available
+specifies that the DNS server to update is running on 127.0.0.1. All available
 Arguments for this challenge solver can be viewed using the command
 "./challenge_solvers/dns-01/zone-update.py --help". If everithing goes well,
 the certificate will be saved as certificat.pem.
