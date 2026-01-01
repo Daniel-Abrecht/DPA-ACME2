@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 
 import re, sys, json, base64, copy, os, errno, subprocess, hashlib, time, argparse, textwrap
-from OpenSSL import crypto
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
@@ -60,8 +65,8 @@ class ChallengeSolver:
 class ACME2:
   def __init__(self, CA, account_key):
     self.CA = CA
-    self.account_key = crypto.load_privatekey(crypto.FILETYPE_PEM, account_key)
-    ac_pub_numbers = self.account_key.to_cryptography_key().public_key().public_numbers()
+    self.account_key = load_pem_private_key(account_key, password=None)
+    ac_pub_numbers = self.account_key.public_key().public_numbers()
     self.jws_jwk = {
       "kty": "RSA",
       "e": base64url(int_to_bytes(ac_pub_numbers.e)),
@@ -102,7 +107,13 @@ class ACME2:
       "protected": base64url(protected),
       "payload": base64url(payload) if payload != None else ""
     }
-    request['signature'] = base64url(crypto.sign(self.account_key, (request['protected'] + '.' + request['payload']).encode('utf-8'), 'sha256'))
+    request['signature'] = base64url(self.account_key.sign(
+      (request['protected'] + '.' + request['payload']).encode('utf-8'),
+      padding.PKCS1v15(),
+      # PSS ("alg": "PS256") doesn't seam to be supported by LetsEncrypt, staying with RS256 for now
+      # padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
+      hashes.SHA256()
+    ))
     return self.request(url, json.dumps(request), {"Content-Type":"application/jose+json"})
 
   def createAccount(self):
@@ -160,9 +171,9 @@ class ACME2:
   def completeChallenge(self, challenge, update):
     url = challenge['challenge']['url']
     challenge_result = json.loads(self.requestJWS(url,update)[0])
-    attemps = 10
+    attemps = 12
     while ( challenge_result['status'] in ['pending','processing'] ) and 0<--attemps:
-      time.sleep(1)
+      time.sleep(5)
       challenge_result = json.loads(self.request(url)[0])
     if not attemps:
       raise Exception("Timeout, challenge still pending or processing after about 10 seconds")
@@ -175,29 +186,27 @@ class ACME2:
     return json.loads(self.requestJWS(url)[0])
 
   def finalizeOrder(self, location, scsr, order=None):
-    csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
-    der = crypto.dump_certificate_request(crypto.FILETYPE_ASN1,csr)
-    attemps = 10
+    csr = x509.load_pem_x509_csr(scsr)
+    der = csr.public_bytes(Encoding.DER)
+    attemps = 12
     while ( (not order) or (order['status'] in ['pending','processing']) ) and 0<--attemps:
-      time.sleep(1)
+      time.sleep(5)
       order = self.getOrder(location)
     if order['status'] != 'ready':
       raise ValueError("Unexpected order status: "+order['status'])
     order = json.loads(self.requestJWS(order['finalize'], {'csr': base64url(der)})[0])
-    attemps = 10
-    while order['status'] == 'ready' and 0<--attemps:
-      time.sleep(1)
+    attemps = 12
+    while order['status'] in ['pending','processing','ready'] and 0<--attemps:
+      time.sleep(5)
       order = self.getOrder(location)
     return order
 
   def getCertificat(self, scsr, challengeSolvers):
-    csr = crypto.load_certificate_request(crypto.FILETYPE_PEM, scsr)
-    domains = [x[1].decode('utf-8') for x in csr.get_subject().get_components() if x[0] == b'CN']
-    for extension in csr.get_extensions():
-      if extension.get_short_name() == b'subjectAltName':
-        domains += [san[4:] for san in extension._subjectAltNameString().split(', ') if san[:4] == 'DNS:']
+    csr = x509.load_pem_x509_csr(scsr)
+    domains = [x.value for x in csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)]
+    domains = csr.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName)
     order, location = self.makeOrder(domains)
-    if order['status'] == 'pending' or order['status'] == 'ready':
+    if order['status'] in ['pending', 'processing', 'ready']:
       authorizations = [ self.getAuthorization(url) for url in order['authorizations'] ]
       self.resolveChallenges(authorizations, challengeSolvers)
       order = self.finalizeOrder(location, scsr, order)
